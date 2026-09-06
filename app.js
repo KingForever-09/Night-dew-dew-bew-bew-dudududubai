@@ -56,9 +56,12 @@ $('signup-form').addEventListener('submit', async (e)=>{
   if (error){ msg.textContent = error.message; return; }
   if (data.session){
     await onLoggedIn(data.session.user);
+  }
+  if (data.session){
+    await onLoggedIn(data.session.user);
   } else {
-    msg.style.color = '#1F9E8E';
-    msg.textContent = "สมัครสำเร็จ! กรุณายืนยันอีเมล (ถ้าระบบกำหนดไว้) แล้วเข้าสู่ระบบได้เลย";
+    // Use the toast notification so the message stays visible on the screen
+    showToast("สมัครสำเร็จ! กรุณายืนยันอีเมล แล้วเข้าสู่ระบบได้เลย");
     switchAuthTab('login');
   }
 });
