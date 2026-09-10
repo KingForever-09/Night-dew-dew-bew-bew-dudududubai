@@ -15,9 +15,14 @@ let currentUser = null;
 let assignments = [];
 let classSchedule = [];
 let personalSchedule = [];
-let calendarMarks = {}; // { 'YYYY-MM-DD': 'busy' | 'free' }
+let exams = [];
+let calendarEvents = []; // custom notes/events/reminders/busy/free, multiple per day
 let calViewYear, calViewMonth; // 0-indexed month
 let selectedDayStr = null;
+let editingDayEventId = null;
+
+const CATEGORY_LABEL = { event:'กิจกรรม', note:'โน้ต', reminder:'เตือนความจำ', busy:'ยุ่ง', free:'ว่าง' };
+const CATEGORY_ICON  = { event:'🔵', note:'🟡', reminder:'🟠', busy:'🟦', free:'🟩' };
 
 // ---------------- helpers ----------------
 function $(id){ return document.getElementById(id); }
@@ -56,12 +61,9 @@ $('signup-form').addEventListener('submit', async (e)=>{
   if (error){ msg.textContent = error.message; return; }
   if (data.session){
     await onLoggedIn(data.session.user);
-  }
-  if (data.session){
-    await onLoggedIn(data.session.user);
   } else {
-    // Use the toast notification so the message stays visible on the screen
-    showToast("สมัครสำเร็จ! กรุณายืนยันอีเมล แล้วเข้าสู่ระบบได้เลย");
+    msg.style.color = '#1F9E8E';
+    msg.textContent = "สมัครสำเร็จ! กรุณายืนยันอีเมล (ถ้าระบบกำหนดไว้) แล้วเข้าสู่ระบบได้เลย";
     switchAuthTab('login');
   }
 });
@@ -107,22 +109,26 @@ async function onLoggedIn(user){
 // ---------------- DATA LOADING ----------------
 async function loadAllData(){
   const uid = currentUser.id;
-  const [aRes, cRes, pRes, mRes] = await Promise.all([
+  const [aRes, cRes, pRes, eRes, evRes] = await Promise.all([
     supabaseClient.from('assignments').select('*').eq('user_id', uid).order('created_at', {ascending:true}),
     supabaseClient.from('class_schedule').select('*').eq('user_id', uid).order('start_time', {ascending:true}),
     supabaseClient.from('personal_schedule').select('*').eq('user_id', uid).order('start_time', {ascending:true}),
-    supabaseClient.from('calendar_marks').select('*').eq('user_id', uid)
+    supabaseClient.from('exams').select('*').eq('user_id', uid).order('exam_date', {ascending:true}),
+    supabaseClient.from('calendar_events').select('*').eq('user_id', uid).order('event_time', {ascending:true})
   ]);
   assignments = aRes.data || [];
   classSchedule = cRes.data || [];
   personalSchedule = pRes.data || [];
-  calendarMarks = {};
-  (mRes.data || []).forEach(m => calendarMarks[m.mark_date] = m.mark_type);
+  exams = eRes.data || [];
+  calendarEvents = evRes.data || [];
   if (aRes.error) console.error(aRes.error);
+  if (eRes.error) console.error(eRes.error);
+  if (evRes.error) console.error(evRes.error);
 }
 
 function renderEverything(){
   renderBoard();
+  renderExams();
   renderTimetable('timetable', classSchedule, false);
   renderTimetable('personal-table', personalSchedule, true);
   renderCalendar();
@@ -375,6 +381,107 @@ function startClock(){
 }
 
 // ================================================================
+// สอบ / ควิซ
+// ================================================================
+function daysUntil(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const target = new Date(y, m-1, d);
+  const today = new Date(); today.setHours(0,0,0,0);
+  target.setHours(0,0,0,0);
+  return Math.round((target - today) / 86400000);
+}
+
+function renderExams(){
+  const list = $('exam-list');
+  list.innerHTML = "";
+  if (exams.length === 0){
+    list.innerHTML = `<div class="empty-note">ยังไม่มีการสอบที่บันทึกไว้ กด "+ เพิ่มการสอบ" เพื่อเริ่มต้น</div>`;
+    return;
+  }
+  const sorted = [...exams].sort((a,b)=> a.exam_date.localeCompare(b.exam_date));
+  sorted.forEach(ex=>{
+    const diff = daysUntil(ex.exam_date);
+    let countdownText, countdownClass = "";
+    if (diff < 0){ countdownText = "สอบไปแล้ว"; countdownClass = "past"; }
+    else if (diff === 0){ countdownText = "สอบวันนี้!"; countdownClass = "today"; }
+    else if (diff === 1){ countdownText = "พรุ่งนี้!"; countdownClass = "today"; }
+    else { countdownText = `อีก ${diff} วัน`; }
+
+    const card = document.createElement('div');
+    card.className = 'exam-card' + (diff >= 0 && diff <= 2 ? ' soon' : '');
+    card.innerHTML = `
+      <div class="exam-main">
+        <div class="exam-subject">${escapeHtml(ex.subject)}</div>
+        <div class="exam-title">${escapeHtml(ex.exam_title)}</div>
+        <div class="exam-meta">📅 ${ex.exam_date}${ex.exam_time ? ' · ' + timeShort(ex.exam_time) + ' น.' : ''}${ex.location ? ' · 📍 ' + escapeHtml(ex.location) : ''}</div>
+        ${ex.topics ? `<div class="exam-topics">📖 ${escapeHtml(ex.topics)}</div>` : ''}
+      </div>
+      <div class="exam-countdown ${countdownClass}">${countdownText}</div>
+    `;
+    card.addEventListener('click', ()=> openExamModal(ex));
+    list.appendChild(card);
+  });
+}
+
+$('add-exam-btn').addEventListener('click', ()=> openExamModal(null));
+$('cancel-exam-btn').addEventListener('click', ()=> $('exam-modal').classList.add('hidden'));
+
+function openExamModal(ex){
+  $('exam-form').reset();
+  $('exam-modal-title').textContent = ex ? "แก้ไขการสอบ" : "เพิ่มการสอบ";
+  $('delete-exam-btn').classList.toggle('hidden', !ex);
+  $('exam-id').value = ex ? ex.id : "";
+  $('exam-subject').value = ex ? ex.subject : "";
+  $('exam-title').value = ex ? ex.exam_title : "";
+  $('exam-date').value = ex ? ex.exam_date : "";
+  $('exam-time').value = ex ? (ex.exam_time || "") : "";
+  $('exam-location').value = ex ? (ex.location || "") : "";
+  $('exam-topics').value = ex ? (ex.topics || "") : "";
+  $('exam-modal').classList.remove('hidden');
+}
+
+$('exam-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const id = $('exam-id').value;
+  const payload = {
+    user_id: currentUser.id,
+    subject: $('exam-subject').value.trim(),
+    exam_title: $('exam-title').value.trim(),
+    exam_date: $('exam-date').value,
+    exam_time: $('exam-time').value || null,
+    location: $('exam-location').value.trim(),
+    topics: $('exam-topics').value.trim(),
+    updated_at: new Date().toISOString()
+  };
+  if (id){
+    const { error } = await supabaseClient.from('exams').update(payload).eq('id', id);
+    if (error){ showToast("บันทึกไม่สำเร็จ"); return; }
+    const idx = exams.findIndex(x=>x.id===id);
+    exams[idx] = { ...exams[idx], ...payload };
+  } else {
+    const { data, error } = await supabaseClient.from('exams').insert(payload).select().single();
+    if (error){ showToast("เพิ่มการสอบไม่สำเร็จ"); return; }
+    exams.push(data);
+  }
+  $('exam-modal').classList.add('hidden');
+  renderExams();
+  renderCalendar();
+  showToast("บันทึกการสอบเรียบร้อย ✓");
+});
+
+$('delete-exam-btn').addEventListener('click', async ()=>{
+  const id = $('exam-id').value;
+  if (!confirm("ต้องการลบการสอบนี้ใช่ไหม?")) return;
+  const { error } = await supabaseClient.from('exams').delete().eq('id', id);
+  if (error){ showToast("ลบไม่สำเร็จ"); return; }
+  exams = exams.filter(x=>x.id!==id);
+  $('exam-modal').classList.add('hidden');
+  renderExams();
+  renderCalendar();
+  showToast("ลบการสอบแล้ว");
+});
+
+// ================================================================
 // ปฏิทิน
 // ================================================================
 function renderCalendar(){
@@ -391,6 +498,7 @@ function renderCalendar(){
   const firstDay = new Date(calViewYear, calViewMonth, 1).getDay();
   const daysInMonth = new Date(calViewYear, calViewMonth+1, 0).getDate();
   const dueDates = new Set(assignments.filter(a=>a.due_date).map(a=>a.due_date));
+  const examDates = new Set(exams.filter(x=>x.exam_date).map(x=>x.exam_date));
 
   for (let i=0;i<firstDay;i++){
     const el = document.createElement('div');
@@ -402,10 +510,16 @@ function renderCalendar(){
     const el = document.createElement('div');
     let cls = 'cal-day';
     if (ds === todayStr()) cls += ' today';
-    if (calendarMarks[ds] === 'busy') cls += ' busy';
-    if (calendarMarks[ds] === 'free') cls += ' free';
     el.className = cls;
-    el.innerHTML = `${d}` + (dueDates.has(ds) ? `<span class="cal-dot"></span>` : '');
+
+    let dots = "";
+    if (dueDates.has(ds)) dots += `<span class="dot-assignment"></span>`;
+    if (examDates.has(ds)) dots += `<span class="dot-exam"></span>`;
+    calendarEvents.filter(ev=>ev.event_date===ds).forEach(ev=>{
+      dots += `<span class="dot-${ev.category}"></span>`;
+    });
+
+    el.innerHTML = `${d}<div class="cal-dots">${dots}</div>`;
     el.addEventListener('click', ()=> openDayModal(ds));
     grid.appendChild(el);
   }
@@ -422,34 +536,109 @@ $('cal-next').addEventListener('click', ()=>{
 
 function openDayModal(ds){
   selectedDayStr = ds;
+  editingDayEventId = null;
+  resetDayEventForm();
   const [y,m,d] = ds.split('-').map(Number);
   $('day-modal-title').textContent = `${d} ${MONTH_NAMES[m-1]} ${y+543}`;
+
   const dayAssignments = assignments.filter(a=>a.due_date === ds);
-  const box = $('day-modal-assignments');
-  box.innerHTML = dayAssignments.length
-    ? dayAssignments.map(a=>`<div class="day-assignment-item">📌 [${escapeHtml(a.subject)}] ${escapeHtml(a.title)} — ${statusLabel(a.status)}</div>`).join('')
-    : `<div class="empty-note">ไม่มีงานครบกำหนดวันนี้</div>`;
+  const dayExams = exams.filter(x=>x.exam_date === ds);
+  const fixedBox = $('day-modal-fixed-items');
+  let fixedHtml = "";
+  dayExams.forEach(ex=>{
+    fixedHtml += `<div class="day-exam-item">📕 [${escapeHtml(ex.subject)}] ${escapeHtml(ex.exam_title)}${ex.exam_time?' · '+timeShort(ex.exam_time)+' น.':''}</div>`;
+  });
+  dayAssignments.forEach(a=>{
+    fixedHtml += `<div class="day-assignment-item">📌 [${escapeHtml(a.subject)}] ${escapeHtml(a.title)} — ${statusLabel(a.status)}</div>`;
+  });
+  fixedBox.innerHTML = fixedHtml || `<div class="empty-note">ไม่มีงานหรือสอบครบกำหนดวันนี้</div>`;
+
+  renderDayEvents();
   $('day-modal').classList.remove('hidden');
 }
-$('close-day-modal-btn').addEventListener('click', ()=> $('day-modal').classList.add('hidden'));
 
-async function setMark(type){
-  const uid = currentUser.id;
-  if (type === null){
-    await supabaseClient.from('calendar_marks').delete().eq('user_id', uid).eq('mark_date', selectedDayStr);
-    delete calendarMarks[selectedDayStr];
-  } else {
-    const { error } = await supabaseClient.from('calendar_marks')
-      .upsert({ user_id: uid, mark_date: selectedDayStr, mark_type: type }, { onConflict: 'user_id,mark_date' });
-    if (error){ showToast("บันทึกไม่สำเร็จ"); return; }
-    calendarMarks[selectedDayStr] = type;
-  }
-  renderCalendar();
-  $('day-modal').classList.add('hidden');
+function renderDayEvents(){
+  const items = calendarEvents.filter(ev=>ev.event_date === selectedDayStr)
+    .sort((a,b)=> (a.event_time||"").localeCompare(b.event_time||""));
+  const box = $('day-modal-events');
+  box.innerHTML = items.length ? "" : `<div class="empty-note">ยังไม่มีรายการที่เพิ่มเอง</div>`;
+  items.forEach(ev=>{
+    const row = document.createElement('div');
+    row.className = 'day-event-item';
+    row.innerHTML = `
+      <div>
+        <span class="cat-dot dot-${ev.category}"></span>
+        <strong>${escapeHtml(ev.title)}</strong>
+        ${ev.event_time ? ' · ' + timeShort(ev.event_time) + ' น.' : ''}
+        <div style="color:var(--ink-soft); font-size:12px; margin-top:2px;">${CATEGORY_ICON[ev.category]} ${CATEGORY_LABEL[ev.category]}${ev.note ? ' — ' + escapeHtml(ev.note) : ''}</div>
+      </div>
+      <div class="day-event-actions">
+        <button data-action="edit" title="แก้ไข">✎</button>
+        <button data-action="del" title="ลบ">✕</button>
+      </div>`;
+    row.querySelector('[data-action="edit"]').addEventListener('click', ()=> startEditDayEvent(ev));
+    row.querySelector('[data-action="del"]').addEventListener('click', ()=> deleteDayEvent(ev.id));
+    box.appendChild(row);
+  });
 }
-$('mark-busy-btn').addEventListener('click', ()=> setMark('busy'));
-$('mark-free-btn').addEventListener('click', ()=> setMark('free'));
-$('mark-clear-btn').addEventListener('click', ()=> setMark(null));
+
+function resetDayEventForm(){
+  editingDayEventId = null;
+  $('day-event-form').reset();
+  $('day-event-id').value = "";
+  $('day-event-submit-btn').textContent = "+ เพิ่มรายการนี้";
+  $('cancel-day-event-edit-btn').classList.add('hidden');
+}
+
+function startEditDayEvent(ev){
+  editingDayEventId = ev.id;
+  $('day-event-id').value = ev.id;
+  $('day-event-category').value = ev.category;
+  $('day-event-title').value = ev.title;
+  $('day-event-time').value = ev.event_time || "";
+  $('day-event-note').value = ev.note || "";
+  $('day-event-submit-btn').textContent = "บันทึกการแก้ไข";
+  $('cancel-day-event-edit-btn').classList.remove('hidden');
+}
+$('cancel-day-event-edit-btn').addEventListener('click', resetDayEventForm);
+
+$('day-event-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const payload = {
+    user_id: currentUser.id,
+    event_date: selectedDayStr,
+    category: $('day-event-category').value,
+    title: $('day-event-title').value.trim(),
+    event_time: $('day-event-time').value || null,
+    note: $('day-event-note').value.trim()
+  };
+  if (editingDayEventId){
+    const { error } = await supabaseClient.from('calendar_events').update(payload).eq('id', editingDayEventId);
+    if (error){ showToast("บันทึกไม่สำเร็จ"); return; }
+    const idx = calendarEvents.findIndex(x=>x.id===editingDayEventId);
+    calendarEvents[idx] = { ...calendarEvents[idx], ...payload };
+  } else {
+    const { data, error } = await supabaseClient.from('calendar_events').insert(payload).select().single();
+    if (error){ showToast("เพิ่มรายการไม่สำเร็จ"); return; }
+    calendarEvents.push(data);
+  }
+  resetDayEventForm();
+  renderDayEvents();
+  renderCalendar();
+  showToast("บันทึกเรียบร้อย ✓");
+});
+
+async function deleteDayEvent(id){
+  if (!confirm("ต้องการลบรายการนี้ใช่ไหม?")) return;
+  const { error } = await supabaseClient.from('calendar_events').delete().eq('id', id);
+  if (error){ showToast("ลบไม่สำเร็จ"); return; }
+  calendarEvents = calendarEvents.filter(x=>x.id!==id);
+  if (editingDayEventId === id) resetDayEventForm();
+  renderDayEvents();
+  renderCalendar();
+}
+
+$('close-day-modal-btn').addEventListener('click', ()=> $('day-modal').classList.add('hidden'));
 
 // ---------------- util ----------------
 function escapeHtml(str){

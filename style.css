@@ -148,6 +148,36 @@ input,textarea,select{font-family:inherit; font-size:15px;}
 .class-item-del{background:none; border:none; color:var(--ink-soft); font-size:16px; padding:2px 6px;}
 .empty-note{color:var(--ink-soft); font-size:13.5px; padding:6px 2px;}
 
+/* ---------- exams ---------- */
+.exam-list{display:flex; flex-direction:column; gap:12px;}
+.exam-card{
+  background:var(--card); border-radius:var(--radius-md); padding:16px 18px;
+  box-shadow:var(--shadow); border-left:5px solid #A85CF9;
+  display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; cursor:pointer;
+}
+.exam-card.soon{border-left-color:#D64545;}
+.exam-main{flex:1; min-width:200px;}
+.exam-subject{font-size:11.5px; font-weight:700; color:#A85CF9; text-transform:uppercase; letter-spacing:.3px;}
+.exam-title{font-weight:700; font-family:'Kanit',sans-serif; font-size:16px; margin:3px 0 6px;}
+.exam-meta{font-size:13px; color:var(--ink-soft);}
+.exam-topics{font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:520px;}
+.exam-countdown{
+  background:var(--sun-soft); color:var(--coral-dark); font-weight:700; font-family:'Kanit',sans-serif;
+  padding:10px 16px; border-radius:14px; text-align:center; font-size:14px; white-space:nowrap;
+}
+.exam-countdown.today{background:#FDE0E0; color:#D64545;}
+.exam-countdown.past{background:var(--mint-soft); color:var(--mint);}
+
+/* ---------- calendar legend ---------- */
+.legend-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:2px; vertical-align:middle;}
+.dot-assignment{background:#D64545;}
+.dot-exam{background:#A85CF9;}
+.dot-event{background:var(--sky);}
+.dot-note{background:var(--sun);}
+.dot-reminder{background:var(--coral);}
+.dot-busy{background:#5B8DEF;}
+.dot-free{background:var(--mint);}
+
 /* ---------- calendar ---------- */
 .cal-nav{display:flex; align-items:center; gap:12px; font-weight:700; font-family:'Kanit',sans-serif;}
 .calendar{
@@ -165,7 +195,8 @@ input,textarea,select{font-family:inherit; font-size:15px;}
 .cal-day.busy{background:var(--sky-soft);}
 .cal-day.free{background:var(--mint-soft);}
 .cal-day:hover:not(.empty){filter:brightness(0.97); cursor:pointer;}
-.cal-dot{width:6px; height:6px; border-radius:50%; background:#D64545; position:absolute; top:6px; right:6px;}
+.cal-dots{display:flex; gap:2px; position:absolute; bottom:6px; left:0; right:0; justify-content:center; flex-wrap:wrap;}
+.cal-dots span{width:5px; height:5px; border-radius:50%;}
 
 /* ---------- modal ---------- */
 .modal-backdrop{
@@ -187,8 +218,19 @@ input,textarea,select{font-family:inherit; font-size:15px;}
 .modal-actions{display:flex; justify-content:space-between; align-items:center; margin-top:6px; gap:10px; flex-wrap:wrap;}
 .modal-actions-right{display:flex; gap:8px; margin-left:auto;}
 .day-mark-buttons{display:flex; gap:8px; flex-wrap:wrap; margin:14px 0;}
-#day-modal-assignments{max-height:180px; overflow-y:auto;}
-.day-assignment-item{padding:8px 10px; background:#fff; border-radius:10px; margin-bottom:6px; font-size:13.5px; border:1px solid var(--paper-line);}
+#day-modal-fixed-items{max-height:140px; overflow-y:auto; margin-bottom:8px;}
+.day-assignment-item{padding:8px 10px; background:#fff; border-radius:10px; margin-bottom:6px; font-size:13.5px; border:1px solid var(--paper-line); border-left:4px solid #D64545;}
+.day-exam-item{padding:8px 10px; background:#fff; border-radius:10px; margin-bottom:6px; font-size:13.5px; border:1px solid var(--paper-line); border-left:4px solid #A85CF9;}
+.day-section-label{font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:10px 0 6px;}
+#day-modal-events{max-height:160px; overflow-y:auto; margin-bottom:10px;}
+.day-event-item{
+  display:flex; justify-content:space-between; align-items:flex-start; gap:8px;
+  padding:9px 12px; background:#fff; border-radius:10px; margin-bottom:6px; font-size:13.5px; border:1px solid var(--paper-line);
+}
+.day-event-item .cat-dot{width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px;}
+.day-event-actions{display:flex; gap:6px; flex-shrink:0;}
+.day-event-actions button{background:none; border:none; font-size:14px; color:var(--ink-soft); padding:2px 4px;}
+#day-event-form{border-top:1px dashed var(--paper-line); padding-top:12px; margin-top:4px;}
 
 /* ---------- toast ---------- */
 .toast{

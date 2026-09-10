@@ -72,6 +72,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-view="board">📋 กระดานงาน</button>
+    <button class="tab" data-view="exams">📕 สอบ/เช็คคะแนน</button>
     <button class="tab" data-view="schedule">🏫 ตารางเรียน</button>
     <button class="tab" data-view="personal">🎯 ตารางส่วนตัว</button>
     <button class="tab" data-view="calendar">📅 ปฏิทิน</button>
@@ -110,6 +111,16 @@
       </div>
     </section>
 
+    <!-- ---------- สอบ / เช็คคะแนน ---------- -->
+    <section id="view-exams" class="view">
+      <div class="view-head">
+        <h2>การสอบและควิซที่กำลังจะมาถึง</h2>
+        <button class="btn btn-primary" id="add-exam-btn">+ เพิ่มการสอบ</button>
+      </div>
+      <p class="hint">บันทึกวันสอบ ขอบเขตเนื้อหา และห้องสอบไว้ที่เดียว ระบบจะเรียงจากใกล้ถึงไกลให้อัตโนมัติ พร้อมนับถอยหลัง</p>
+      <div class="exam-list" id="exam-list"></div>
+    </section>
+
     <!-- ---------- ตารางเรียน ---------- -->
     <section id="view-schedule" class="view">
       <div class="view-head">
@@ -140,7 +151,15 @@
           <button class="btn btn-ghost" id="cal-next">›</button>
         </div>
       </div>
-      <p class="hint">🔴 มีงานครบกำหนด &nbsp; 🟦 ยุ่ง &nbsp; 🟩 ว่าง &nbsp; — คลิกวันที่เพื่อจัดการ</p>
+      <p class="hint">
+        <span class="legend-dot dot-assignment"></span> งานครบกำหนด &nbsp;
+        <span class="legend-dot dot-exam"></span> วันสอบ &nbsp;
+        <span class="legend-dot dot-event"></span> กิจกรรม &nbsp;
+        <span class="legend-dot dot-note"></span> โน้ต &nbsp;
+        <span class="legend-dot dot-reminder"></span> เตือนความจำ &nbsp;
+        <span class="legend-dot dot-busy"></span> ยุ่ง &nbsp;
+        <span class="legend-dot dot-free"></span> ว่าง &nbsp; — คลิกวันที่เพื่อดู/เพิ่มรายการ
+      </p>
       <div class="calendar" id="calendar-grid"></div>
     </section>
 
@@ -259,18 +278,84 @@
   </div>
 </div>
 
+<!-- ===================== Modal: เพิ่ม/แก้ไขการสอบ ===================== -->
+<div id="exam-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3 id="exam-modal-title">เพิ่มการสอบ</h3>
+    <form id="exam-form">
+      <input type="hidden" id="exam-id">
+      <label>วิชา
+        <input type="text" id="exam-subject" required placeholder="เช่น เคมี">
+      </label>
+      <label>ชื่อการสอบ
+        <input type="text" id="exam-title" required placeholder="เช่น สอบกลางภาค บทที่ 1-3">
+      </label>
+      <div class="two-col">
+        <label>วันที่สอบ
+          <input type="date" id="exam-date" required>
+        </label>
+        <label>เวลาสอบ (ถ้ามี)
+          <input type="time" id="exam-time">
+        </label>
+      </div>
+      <label>ห้องสอบ / สถานที่
+        <input type="text" id="exam-location" placeholder="เช่น ห้อง 305">
+      </label>
+      <label>ขอบเขตเนื้อหา / สิ่งที่ต้องอ่าน
+        <textarea id="exam-topics" rows="3" placeholder="เช่น บทที่ 1-3, สูตรพื้นฐาน, ทำโจทย์ท้ายบท"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger hidden" id="delete-exam-btn">ลบการสอบนี้</button>
+        <div class="modal-actions-right">
+          <button type="button" class="btn btn-ghost" id="cancel-exam-btn">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึก</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ===================== Modal: จัดการวันในปฏิทิน ===================== -->
 <div id="day-modal" class="modal-backdrop hidden">
   <div class="modal">
     <h3 id="day-modal-title">วันที่</h3>
-    <div id="day-modal-assignments"></div>
-    <div class="day-mark-buttons">
-      <button class="btn btn-mark busy" id="mark-busy-btn">🟦 ทำเครื่องหมาย "ยุ่ง"</button>
-      <button class="btn btn-mark free" id="mark-free-btn">🟩 ทำเครื่องหมาย "ว่าง"</button>
-      <button class="btn btn-ghost" id="mark-clear-btn">ล้างเครื่องหมาย</button>
-    </div>
+
+    <div id="day-modal-fixed-items"></div>
+
+    <div class="day-section-label">รายการที่คุณเพิ่มเอง</div>
+    <div id="day-modal-events"></div>
+
+    <form id="day-event-form">
+      <input type="hidden" id="day-event-id">
+      <label>ประเภท
+        <select id="day-event-category">
+          <option value="event">🔵 กิจกรรม</option>
+          <option value="note">🟡 โน้ต</option>
+          <option value="reminder">🟠 เตือนความจำ</option>
+          <option value="busy">🟦 ยุ่ง</option>
+          <option value="free">🟩 ว่าง</option>
+        </select>
+      </label>
+      <label>หัวข้อ
+        <input type="text" id="day-event-title" required placeholder="เช่น ไปหาหมอ, ประชุมชมรม">
+      </label>
+      <div class="two-col">
+        <label>เวลา (ถ้ามี)
+          <input type="time" id="day-event-time">
+        </label>
+        <label>&nbsp;</label>
+      </div>
+      <label>รายละเอียดเพิ่มเติม
+        <textarea id="day-event-note" rows="2" placeholder="รายละเอียด (ถ้ามี)"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost hidden" id="cancel-day-event-edit-btn">ยกเลิกการแก้ไข</button>
+        <button type="submit" class="btn btn-primary btn-block" id="day-event-submit-btn">+ เพิ่มรายการนี้</button>
+      </div>
+    </form>
+
     <div class="modal-actions">
-      <button type="button" class="btn btn-primary" id="close-day-modal-btn">ปิด</button>
+      <button type="button" class="btn btn-primary btn-block" id="close-day-modal-btn">ปิด</button>
     </div>
   </div>
 </div>
